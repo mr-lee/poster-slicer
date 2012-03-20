@@ -11,20 +11,20 @@ class ImgDisplay(gtk.DrawingArea):
         gtk.DrawingArea.__init__(self)
 
         #some constants
-        self.paper_ratio = 8.5/11 # letter sized paper ratio
         self.std_height = 500 # standard height to scale to
         
         #temporary, initial variables
-        self.height = 4
+        self.div = 4
         self.portrait = True
+        self.vertical = True
+        self.paper_ratio = 8.5/11 # letter paper
+        self.pic_name = pic_name
 
         #load in the picture and scale it
         imgbuf = gtk.gdk.pixbuf_new_from_file(pic_name)
         scale_r = float(self.std_height)/imgbuf.get_height()
         self.pixbuf = imgbuf.scale_simple(int(imgbuf.get_width()*scale_r), self.std_height, gtk.gdk.INTERP_HYPER)
-        self.set_size_request(self.pixbuf.get_width(),self.pixbuf.get_height())
-
-        self.pic_name = pic_name
+        self.set_size_request( self.pixbuf.get_width(),self.pixbuf.get_height())
         self.connect("expose_event", self.expose)
 
     def expose(self,widget,event):
@@ -64,30 +64,53 @@ class ImgDisplay(gtk.DrawingArea):
         if widget.get_active():
             self.portrait = False
             self.redraw()
+    def set_vertical(self, widget):
+        if widget.get_active():
+            self.vertical = True
+            self.redraw()
+    def set_horizontal(self, widget):
+        if widget.get_active():
+            self.vertical = False
+            self.redraw()
+    def set_letter(self, widget):
+        if widget.get_active():
+            self.paper_ratio = 8.5/11
+            self.redraw()
+    def set_A4(self, widget):
+        if widget.get_active():
+            self.paper_ratio = float(210)/297 # A4
+            self.redraw()
 
-    def set_height(self, widget):
-        self.height = int(widget.get_text())
+    def set_div(self, widget):
+        self.div = int(widget.get_text())
         self.redraw()
 
     def recalculate_lines(self):
         # if we're in portrait, set the height side accordingly. Otherwise use landscape
-        if self.portrait:
+        if self.portrait and self.vertical or not self.portrait and not self.vertical:
             paper_ratio = self.paper_ratio 
         else:
             paper_ratio = 1/self.paper_ratio
+
         #now assuming that the height side will be fitted to the denominator in paper_ratio
-        height_div = self.allocation.height/self.height
-        width_div = height_div*paper_ratio
-        width_n = int(self.allocation.width/width_div)
-        #generate the lists
-        self.y_break = [y*height_div for y in range(1,self.height + 1)]
+        if self.vertical:
+            height_div = self.allocation.height/self.div
+            width_div = height_div*paper_ratio
+            width_n = int(self.allocation.width/width_div)
+            height_n = self.div
+        else:
+            width_div = self.allocation.width/self.div
+            height_div = width_div*paper_ratio
+            height_n = int(self.allocation.height/height_div)
+            width_n = self.div
+        self.y_break = [y*height_div for y in range(1,height_n + 1)]
         self.x_break = [x*width_div for x in range(1,width_n + 1)]
         #each time we recalculate, we need to redraw
         self.draw_lines()
     
-    #dump the x,y break data to a processing function
+    #dump the x,y break data to a processing function to output images
     def dump_data(self, func, filename):
-        func(self.height, self.portrait, self.pic_name, filename)
+        return func(self.div, self.portrait, self.paper_ratio, self.vertical, self.pic_name, filename)
 
     def redraw(self):
         if self.window:
@@ -106,34 +129,47 @@ def runDialog(widget, imgD, func):
         imgD.dump_data(func, f_name)
     fileD.destroy()
 
-def save_to_pdf(height, portrait, img_filename, save_filename):
+def save_to_pdf(div, portrait, paper_ratio, vertical, img_filename, save_filename):
     print "saving..."
-    paper_ratio = 8.5/11
     im = Image.open(img_filename)
     #I have no idea how printers work, so let's set the long side of each page to be 1000px
     long_side = 1000
     short_side = int(long_side*paper_ratio)
     #set the target resolution of the rescale, as well as some dimensions that depend on orientation
     if portrait:
-        rescale_r = long_side*height/float(im.size[1])
         h_len = long_side
         w_len = short_side
+        if vertical:
+            rescale_r = long_side*div/float(im.size[1])
+        else:
+            rescale_r = short_side*div/float(im.size[0])
     else:
-        rescale_r = short_side*height/float(im.size[1])
         h_len = short_side
         w_len = long_side
+        if vertical:
+            rescale_r = short_side*div/float(im.size[1])
+        else:
+            rescale_r = long_side*div/float(im.size[0])
     im_rescaled = im.resize(tuple(map((lambda x:int(x*rescale_r)),im.size)), Image.ANTIALIAS)
 
     #start chopping up the image
     result_images = []
-    width_pages = int(im_rescaled.size[0]/w_len) + 1
+    if vertical:
+        height_pages = div 
+        width_pages = int(im_rescaled.size[0]/w_len) + 1
+    else:
+        width_pages = div 
+        height_pages = int(im_rescaled.size[1]/w_len) + 1
 
-    for y in range(height):
+    for y in range(height_pages):
+        h_end = (y+1)*h_len
+        if h_end > im_rescaled.size[1]:
+            h_end = im_rescaled.size[1]
         for x in range(width_pages):
             w_end = (x+1)*w_len
-            if (x+1)*w_len > im_rescaled.size[0]:
+            if w_end > im_rescaled.size[0]:
                 w_end = im_rescaled.size[0]
-            im_part = im_rescaled.crop((x*w_len, y*h_len, w_end, (y+1)*h_len))
+            im_part = im_rescaled.crop((x*w_len, y*h_len, w_end, h_end))
             if im.mode == "RGBA":
                 im_part = Image.composite(im_part,Image.new("RGB",(w_len,h_len),(255,255,255)),im_part.split()[3])
             blank_im = Image.new("RGB",(w_len,h_len),(255,255,255))
@@ -142,7 +178,6 @@ def save_to_pdf(height, portrait, img_filename, save_filename):
             result_images.append(im_part)
 
     #create a ~1cm border around each image
-    bordered_images = []
     if portrait:
         w_pad = 34
         h_pad = 44
@@ -150,16 +185,16 @@ def save_to_pdf(height, portrait, img_filename, save_filename):
         w_pad = 44
         h_pad = 34
 
-    for im in result_images:
-        bordered_im = Image.new("RGB",(w_len+w_pad,h_len+h_pad),(255,255,255))
-        bordered_im.paste(im,(w_pad/2,h_pad/2))
-        bordered_images.append(bordered_im)
+    bordered_im = [Image.new("RGB",(w_len+w_pad,h_len+h_pad),(255,255,255)) for i in range(len(result_images))]
 
     #change to a directory and save everything into it
-    for i in range(len(bordered_images)):
-        bordered_images[i].save(save_filename+"/"+str(i)+".png")
+    for i in range(len(bordered_im)):
+        bordered_im[i].paste(result_images[i],(w_pad/2,h_pad/2))
+        bordered_im[i].save(save_filename+"/"+str(i)+".png")
     print "done"
 
+
+#intialize the gtk interface
 window = gtk.Window()
 img = ImgDisplay(argv[1])
 
@@ -171,24 +206,38 @@ port_r_button = gtk.RadioButton(group=None, label="Portrait")
 port_r_button.connect("toggled",img.set_portrait)
 land_r_button = gtk.RadioButton(group=port_r_button, label="Landscape")
 land_r_button.connect("toggled",img.set_landscape)
-#make selector for height
-height_num = gtk.Entry()
-height_num.set_text("")
-height_num.set_max_length(2)
-height_num.set_width_chars(3)
-height_num.connect("activate",img.set_height)
+#make radio buttons to specify horizontal/vertical fit 
+vert_r_button = gtk.RadioButton(group=None, label="Vertical")
+vert_r_button.connect("toggled",img.set_vertical)
+horiz_r_button = gtk.RadioButton(group=vert_r_button, label="Horizontal")
+horiz_r_button.connect("toggled",img.set_horizontal)
+#make radio buttons to specify paper type
+lett_r_button = gtk.RadioButton(group=None, label="Letter")
+lett_r_button.connect("toggled",img.set_letter)
+a4_r_button = gtk.RadioButton(group=lett_r_button, label="A4")
+a4_r_button.connect("toggled",img.set_A4)
+#make selector for division
+div_num = gtk.Entry()
+div_num.set_text("")
+div_num.set_max_length(2)
+div_num.set_width_chars(3)
+div_num.connect("activate",img.set_div)
 #make a label for height
-h_label = gtk.Label()
-h_label.set_text("Height:")
+d_label = gtk.Label()
+d_label.set_text("Division:")
 #make a button to make the pdf
 make_pdf_btn = gtk.Button("Save to directory...")
 make_pdf_btn.connect("clicked",runDialog, img, save_to_pdf)
 #pack into HBox
 upperHBox.pack_start(port_r_button, expand=False)
 upperHBox.pack_start(land_r_button)
+upperHBox.pack_start(vert_r_button, expand=False)
+upperHBox.pack_start(horiz_r_button)
+upperHBox.pack_start(lett_r_button, expand=False)
+upperHBox.pack_start(a4_r_button)
 upperHBox.pack_start(make_pdf_btn)
-upperHBox.pack_end(height_num, expand=False, fill=False)
-upperHBox.pack_end(h_label, expand=False, fill=False)
+upperHBox.pack_end(div_num, expand=False, fill=False)
+upperHBox.pack_end(d_label, expand=False, fill=False)
 #pack into VBox
 topVBox.pack_start(upperHBox)
 topVBox.pack_start(img)
