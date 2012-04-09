@@ -171,7 +171,7 @@ def save_to_pdf(div, portrait, paper_ratio, vertical, img_filename, save_filenam
                 w_end = im_rescaled.size[0]
             im_part = im_rescaled.crop((x*w_len, y*h_len, w_end, h_end))
             if im.mode == "RGBA":
-                im_part = Image.composite(im_part,Image.new("RGB",(w_len,h_len),(255,255,255)),im_part.split()[3])
+                im_part = Image.composite(im_part,Image.new("RGB",(w_len,h_len),(255,255,255)).crop((x*w_len, y*h_len, w_end, h_end)),im_part.split()[3])
             blank_im = Image.new("RGB",(w_len,h_len),(255,255,255))
             blank_im.paste(im_part,(0,0))
             im_part = blank_im
