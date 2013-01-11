@@ -170,11 +170,11 @@ def save_to_pdf(div, portrait, paper_ratio, vertical, img_filename, save_filenam
             if w_end > im_rescaled.size[0]:
                 w_end = im_rescaled.size[0]
             im_part = im_rescaled.crop((x*w_len, y*h_len, w_end, h_end))
-            if im.mode == "RGBA":
-                im_part = Image.composite(im_part,Image.new("RGB",(w_len,h_len),(255,255,255)).crop((x*w_len, y*h_len, w_end, h_end)),im_part.split()[3])
-            blank_im = Image.new("RGB",(w_len,h_len),(255,255,255))
-            blank_im.paste(im_part,(0,0))
-            im_part = blank_im
+            #if im.mode == "RGBA":
+                #im_part = Image.composite(Image.new("RGB",(w_end-x*w_len,h_end-y*h_len),(255,255,255)),im_part,im_part.split()[3])
+            #blank_im = Image.new("RGB",(w_len,h_len),(255,255,255))
+            #blank_im.paste(im_part,(0,0))
+            #im_part = blank_im
             result_images.append(im_part)
 
     #create a ~1cm border around each image
@@ -185,7 +185,9 @@ def save_to_pdf(div, portrait, paper_ratio, vertical, img_filename, save_filenam
         w_pad = 44
         h_pad = 34
 
-    bordered_im = [Image.new("RGB",(w_len+w_pad,h_len+h_pad),(255,255,255)) for i in range(len(result_images))]
+    bordered_im = [Image.new("RGBA",(w_len+w_pad,h_len+h_pad),(255,255,255,0)) for i in range(len(result_images))]
+    if(im.mode=="RGB"):
+        bordered_im=bordered_im.convert("RGB")
 
     #change to a directory and save everything into it
     for i in range(len(bordered_im)):
